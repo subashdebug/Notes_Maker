@@ -1,0 +1,18 @@
+name = "board-to-notes"
+main = "worker.js"
+compatibility_date = "2025-09-01"
+
+# Serves public/index.html (the app) at your Worker URL
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# Database: run `wrangler d1 create board-to-notes-db`, then paste the id it prints below
+[[d1_databases]]
+binding = "DB"
+database_name = "board-to-notes-db"
+database_id = "5f5c2734-ce8b-4f45-9f2d-b9341b7395b5"
+
+# Secrets (not stored in this file). Set them with:
+#   wrangler secret put GEMINI_API_KEY
+#   wrangler secret put ADMIN_TOKEN
