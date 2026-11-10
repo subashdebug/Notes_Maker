@@ -11,7 +11,7 @@ binding = "ASSETS"
 [[d1_databases]]
 binding = "DB"
 database_name = "board-to-notes-db"
-database_id = "5f5c2734-ce8b-4f45-9f2d-b9341b7395b5"
+database_id = "90f53da1-66cd-4de3-805a-7aef20f02b20"
 
 # Secrets (not stored in this file). Set them with:
 #   wrangler secret put GEMINI_API_KEY
