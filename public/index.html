@@ -1,0 +1,1380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Board to Notes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Hanken+Grotesk:wght@400;500;600;700&display=swap">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<meta name="theme-color" content="#14302a">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root {
+    --board:#14302a; --board-2:#1d443b; --chalk:#eef2ea; --chalk-dim:#b4c4bb;
+    --paper:#f3f5f1; --line:#d8ded5; --line-soft:#e8ece5;
+    --ink:#15211d; --muted:#5b6a63; --hl:#f5d547; --hl-soft:#fbf0b4;
+    --danger:#a52a22; --danger-bg:#fdeceb;
+    --display:'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
+    --body:'Hanken Grotesk', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --side-w:15.5rem; --bar-h:3.5rem;
+  }
+  *, *::before, *::after { box-sizing:border-box; }
+  html { color-scheme:light; scroll-behavior:smooth; }
+  body { margin:0; min-height:100vh; background:var(--paper); color:var(--ink); font-family:var(--body); line-height:1.5; -webkit-font-smoothing:antialiased; -webkit-tap-highlight-color:transparent; }
+  h1,h2,h3,p,ul,figure { margin:0; padding:0; }
+  ul { list-style:none; }
+  button { font:inherit; color:inherit; background:none; border:0; padding:0; cursor:pointer; }
+  input, textarea { font:inherit; color:inherit; }
+  img { display:block; max-width:100%; }
+  summary { cursor:pointer; }
+  :focus-visible { outline:2px solid var(--board); outline-offset:2px; }
+  .hidden { display:none !important; }
+  .sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+  .i { width:1.1rem; height:1.1rem; flex:none; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; transition:none !important; scroll-behavior:auto !important; } }
+
+  /* controls */
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:.5rem; padding:.7rem 1.1rem; border-radius:10px; border:1px solid transparent; font-weight:600; font-size:.92rem; line-height:1.2; transition:background-color .15s, border-color .15s, transform .1s; }
+  .btn:active { transform:translateY(1px); }
+  .btn:disabled { opacity:.45; cursor:not-allowed; }
+  .btn-primary { background:var(--hl); color:var(--board); border-color:#e3bf2a; }
+  .btn-primary:hover:not(:disabled) { background:#f0cc33; }
+  .btn-soft { background:#fff; color:var(--ink); border-color:var(--line); }
+  .btn-soft:hover { background:#eef1ea; border-color:#c3ccc0; }
+  .btn-danger { background:#fff; color:var(--danger); border-color:#ebc6c2; }
+  .btn-danger:hover { background:var(--danger-bg); }
+  .field { width:100%; border:1px solid var(--line); border-radius:8px; padding:.65rem .8rem; background:#fff; font-size:.95rem; transition:border-color .15s, box-shadow .15s; }
+  .field:hover { border-color:#bcc6b9; }
+  .field:focus { outline:none; border-color:var(--board); box-shadow:0 0 0 3px rgba(245,213,71,.55); }
+  textarea.field { resize:vertical; }
+  .field-title { font-family:var(--display); font-weight:700; font-size:1.5rem; line-height:1.25; }
+  .field-ruled { line-height:1.75rem; padding:.4rem .8rem; background-color:#fff; background-image:repeating-linear-gradient(to bottom, transparent 0, transparent calc(1.75rem - 1px), #e1e7de calc(1.75rem - 1px), #e1e7de 1.75rem); background-attachment:local; background-origin:content-box; }
+  .lbl { display:block; font-size:.82rem; font-weight:600; color:var(--muted); margin-bottom:.35rem; }
+  .hint { font-weight:400; color:#7b887f; }
+  .err { font-size:.88rem; color:var(--danger); }
+  .page-title { font-family:var(--display); font-size:1.75rem; font-weight:700; letter-spacing:-.02em; line-height:1.15; }
+  .sub { color:var(--muted); font-size:.9rem; }
+  .panel { background:#fff; border:1px solid var(--line); border-radius:14px; padding:1.25rem; }
+  .panel h2, .sheet-bar h2 { font-family:var(--display); font-size:1.15rem; font-weight:700; }
+
+  /* landing: animated split board / paper */
+  .land { position:relative; overflow-x:hidden; }
+  .brand { display:flex; align-items:center; gap:.6rem; min-width:0; }
+  .brand .name { font-family:var(--display); font-weight:700; font-size:1.1rem; letter-spacing:-.01em; }
+  .logo { width:2rem; height:2rem; flex:none; }
+  .land-top { position:absolute; inset:0 0 auto 0; z-index:5; display:flex; align-items:center; justify-content:space-between; padding:1.1rem 1.25rem; }
+  .land-top .brand { color:var(--chalk); }
+  .land-cta { display:flex; gap:.5rem; }
+  .land-cta button { padding:.5rem .9rem; border-radius:10px; font-weight:600; font-size:.88rem; transition:background-color .15s, transform .1s; }
+  .land-cta [data-auth="login"] { color:var(--chalk); border:1px solid rgba(238,242,234,.35); }
+  .land-cta [data-auth="signup"] { background:var(--hl); color:var(--board); }
+  .land-cta [data-auth="signup"]:hover { background:#f0cc33; }
+  .land-main { display:grid; }
+  .land-story { position:relative; overflow:hidden; background:var(--board); background-image:radial-gradient(60rem 28rem at 15% 0%, rgba(255,255,255,.08), transparent 60%); color:var(--chalk); padding:6.5rem 1.5rem 3rem; display:flex; flex-direction:column; justify-content:center; gap:1.4rem; }
+  .land-story > * { position:relative; z-index:1; }
+  .land-story::before { content:''; position:absolute; inset:.8rem; border:1px solid rgba(238,242,234,.14); border-radius:12px; pointer-events:none; }
+  .land-story::after { content:''; position:absolute; inset:0; pointer-events:none; opacity:.55;
+    background-image:radial-gradient(circle, rgba(238,242,234,.55) 0 1.5px, transparent 2px), radial-gradient(circle, rgba(238,242,234,.35) 0 1px, transparent 1.5px);
+    background-size:150px 170px, 95px 110px; background-position:0 0, 40px 60px; animation:dust 36s linear infinite; }
+  @keyframes dust { to { background-position:0 -170px, 40px -50px; } }
+  @keyframes rise { to { transform:none; } }
+  @keyframes fade { to { opacity:1; } }
+  @keyframes pulse { 0% { box-shadow:0 0 0 0 rgba(245,213,71,.7); } 100% { box-shadow:0 0 0 .6rem rgba(245,213,71,0); } }
+  @keyframes bob { 0%,100% { translate:0 0; } 50% { translate:0 -7px; } }
+  .l-in { opacity:0; animation:fade .8s ease forwards; animation-delay:calc(.55s + var(--i,0)*.12s); }
+  .land-story .tag { color:var(--hl); font-weight:600; font-size:.9rem; display:flex; align-items:center; gap:.55rem; }
+  .land-story .tag::before { content:''; width:.55rem; height:.55rem; border-radius:50%; background:var(--hl); animation:pulse 1.8s ease-out infinite; }
+  .land-story h1 { font-family:var(--display); font-weight:800; font-size:clamp(2.3rem,4.6vw,3.7rem); line-height:1.04; letter-spacing:-.03em; max-width:14em; }
+  .ln { display:block; overflow:hidden; padding-bottom:.1em; }
+  .ln > span { display:block; transform:translateY(105%); animation:rise .9s cubic-bezier(.2,.7,.2,1) forwards; animation-delay:calc(.15s + var(--i)*.16s); }
+  .land-story p { color:var(--chalk-dim); font-size:1.08rem; max-width:34rem; }
+  .ticks { display:grid; gap:.45rem; color:var(--chalk); font-size:.95rem; }
+  .ticks li::before { content:'\2713'; color:var(--hl); font-weight:700; margin-right:.6rem; }
+
+  /* hero demo: board photo -> scan -> notes, loops */
+  .demo { --cycle:11s; position:relative; height:21rem; max-width:36rem; margin-top:.5rem; }
+  .d-photo { position:absolute; left:0; top:1.4rem; width:56%; padding:.45rem .45rem 1.7rem; background:#fbfbf8; border-radius:4px; box-shadow:0 18px 40px -12px rgba(0,0,0,.6); transform:rotate(-4deg); animation:bob 7s ease-in-out infinite; }
+  .d-photo > svg { display:block; width:100%; height:auto; background:#1f4a3f; border-radius:2px; }
+  .d-photo::after { content:'Board photo'; position:absolute; left:.65rem; bottom:.4rem; font-size:.72rem; font-weight:600; color:var(--muted); }
+  .ch { fill:none; stroke:#eef2ea; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; stroke-dasharray:1 1; stroke-dashoffset:1; animation:draw var(--cycle) both infinite; animation-delay:calc(var(--n)*.22s); }
+  @keyframes draw { 0%,4% { stroke-dashoffset:1; } 26%,94% { stroke-dashoffset:0; } 98%,100% { stroke-dashoffset:1; } }
+  .d-scan { position:absolute; top:.45rem; bottom:1.7rem; left:4%; width:3px; border-radius:2px; background:var(--hl); box-shadow:0 0 16px 5px rgba(245,213,71,.55); opacity:0; animation:scan var(--cycle) linear infinite; }
+  @keyframes scan { 0%,28% { left:4%; opacity:0; } 30% { opacity:1; } 46% { left:95%; opacity:1; } 48%,100% { left:95%; opacity:0; } }
+  .d-arrow { position:absolute; left:47%; top:44%; width:4.5rem; z-index:2; color:var(--hl); fill:none; stroke:currentColor; stroke-width:3; stroke-linecap:round; stroke-linejoin:round; }
+  .d-arrow path { stroke-dasharray:1 1; stroke-dashoffset:1; animation:draw2 var(--cycle) both infinite; }
+  @keyframes draw2 { 0%,44% { stroke-dashoffset:1; } 54%,94% { stroke-dashoffset:0; } 98%,100% { stroke-dashoffset:1; } }
+  .d-sheet { position:absolute; right:0; top:0; width:58%; padding:1rem 1.1rem 1.1rem; background:#fff; color:var(--ink); border-radius:8px; box-shadow:0 22px 44px -14px rgba(0,0,0,.65); transform:rotate(2.5deg); animation:bob 7s -3s ease-in-out infinite; }
+  .d-sheet h4 { margin:0 0 .45rem; font-family:var(--display); font-size:1rem; font-weight:700; }
+  .d-line { display:block; white-space:nowrap; overflow:hidden; font-size:.8rem; line-height:1.55rem; border-bottom:1px solid #e1e7de; clip-path:inset(0 100% 0 0); animation:reveal var(--cycle) both infinite; animation-delay:calc(var(--n)*.14s); }
+  @keyframes reveal { 0%,46% { clip-path:inset(0 100% 0 0); } 58%,94% { clip-path:inset(0 0 0 0); } 98%,100% { clip-path:inset(0 100% 0 0); } }
+  .d-hl { background:linear-gradient(var(--hl),var(--hl)) no-repeat left 60%/0% 78%; animation:sweep var(--cycle) both infinite; }
+  @keyframes sweep { 0%,64% { background-size:0% 78%; } 74%,94% { background-size:100% 78%; } 98%,100% { background-size:0% 78%; } }
+  @media (max-width:479px) { .demo { height:19rem; } .d-line { font-size:.7rem; } }
+
+  /* auth */
+  .land-auth { display:flex; align-items:center; justify-content:center; padding:2.5rem 1.25rem 3rem; }
+  .auth-box { width:100%; max-width:23rem; }
+  .form { display:grid; gap:1rem; }
+  .form-head h2 { font-family:var(--display); font-size:1.9rem; font-weight:700; letter-spacing:-.02em; line-height:1.15; }
+  .switch { font-size:.9rem; color:var(--muted); }
+  .switch button { color:var(--board); font-weight:700; text-decoration:underline; text-underline-offset:3px; }
+
+  /* subject marquee */
+  .marquee { background:var(--hl); color:var(--board); overflow:hidden; border-block:1px solid #e3bf2a; }
+  .marquee-track { display:flex; width:max-content; animation:slide 42s linear infinite; }
+  .marquee:hover .marquee-track { animation-play-state:paused; }
+  .marquee-track span { padding:.85rem 0 .85rem 1.6rem; font-family:var(--display); font-weight:700; font-size:1.05rem; white-space:nowrap; }
+  .marquee-track span::after { content:'\2726'; margin-left:1.6rem; opacity:.55; }
+  @keyframes slide { to { transform:translateX(-50%); } }
+
+  /* scroll reveal */
+  .reveal { opacity:0; transform:translateY(26px); transition:opacity .7s ease, transform .7s cubic-bezier(.2,.7,.2,1); transition-delay:calc(var(--i,0)*.12s); }
+  .reveal.in { opacity:1; transform:none; }
+  .land-feats { max-width:72rem; margin:0 auto; padding:4rem 1.25rem 2.5rem; }
+  .land-feats h2 { font-family:var(--display); font-size:clamp(1.6rem,3vw,2.25rem); font-weight:700; letter-spacing:-.02em; }
+  .land-feats > p { color:var(--muted); margin-top:.4rem; }
+  .feat-list { margin-top:2rem; border-top:1px solid var(--line); }
+  .feat { padding:1.4rem 0; border-bottom:1px solid var(--line); }
+  .feat .mark { width:2.8rem; height:2.8rem; border-radius:12px; background:var(--hl-soft); color:var(--board); display:grid; place-items:center; transition:transform .3s cubic-bezier(.2,.7,.2,1), background-color .3s; }
+  .feat:hover .mark { transform:rotate(-8deg) scale(1.1); background:var(--hl); }
+  .feat h3 { font-family:var(--display); font-weight:700; font-size:1.2rem; margin-top:.9rem; }
+  .feat p { color:var(--muted); font-size:.92rem; margin-top:.35rem; }
+  .cta-wrap { padding:0 1.25rem; }
+  .cta-band { max-width:72rem; margin:1.5rem auto 0; padding:2.5rem 1.5rem; border-radius:20px; background:var(--board); color:var(--chalk); display:grid; gap:1.25rem; align-items:center; }
+  .cta-band h2 { font-family:var(--display); font-size:clamp(1.6rem,3.2vw,2.4rem); font-weight:800; letter-spacing:-.02em; line-height:1.1; }
+  .cta-band p { color:var(--chalk-dim); margin-top:.4rem; }
+  .cta-band .btn { padding:.9rem 1.6rem; font-size:1rem; justify-self:start; }
+  .land-foot { max-width:72rem; margin:0 auto; padding:1.75rem 1.25rem 2.5rem; font-size:.8rem; color:var(--muted); }
+  @media (min-width:760px) { .cta-band { grid-template-columns:1fr auto; padding:3rem 3rem; } .cta-band .btn { justify-self:end; } }
+  @media (min-width:960px) {
+    .land-main { grid-template-columns:minmax(0,1.2fr) minmax(24rem,.8fr); min-height:100vh; }
+    .land-top { padding:1.5rem 2.5rem; }
+    .land-cta [data-auth="login"] { color:var(--ink); border-color:var(--line); }
+    .land-story { padding:6rem 4rem 4rem; }
+    .feat-list { display:grid; grid-template-columns:repeat(3,1fr); }
+    .feat { border-bottom:0; border-left:1px solid var(--line); padding:1.6rem 1.75rem 0; }
+    .feat:first-child { border-left:0; padding-left:0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ln > span { transform:none !important; }
+    .l-in, .reveal { opacity:1 !important; transform:none !important; }
+    .ch, .d-arrow path { stroke-dashoffset:0 !important; }
+    .d-line { clip-path:none !important; }
+    .d-hl { background-size:100% 78% !important; }
+    .d-scan { display:none; }
+    .marquee-track { width:auto; flex-wrap:wrap; }
+  }
+
+  /* app shell: sidebar on desktop, top bar + tab bar on mobile */
+  #app { min-height:100vh; }
+  .shell { position:sticky; top:0; z-index:30; height:var(--bar-h); display:flex; align-items:center; justify-content:space-between; gap:.75rem; padding:0 1rem; background:var(--board); color:var(--chalk); }
+  .side-nav { display:none; }
+  .account { display:flex; align-items:center; gap:.5rem; }
+  #user-email { display:none; }
+  .account-actions { display:flex; gap:.15rem; }
+  .link-btn { font-size:.8rem; font-weight:600; padding:.4rem .6rem; border-radius:8px; color:var(--chalk); }
+  .link-btn:hover { background:rgba(255,255,255,.1); }
+  .hdr-nav { display:flex; align-items:center; gap:.7rem; padding:.65rem .8rem; border-radius:8px; font-weight:600; font-size:.92rem; color:var(--chalk-dim); text-align:left; transition:background-color .15s, color .15s; }
+  .hdr-nav:hover { background:rgba(255,255,255,.07); color:var(--chalk); }
+  .hdr-nav.active { background:rgba(255,255,255,.1); color:var(--chalk); box-shadow:inset 3px 0 0 var(--hl); }
+  .shell :focus-visible { outline-color:var(--chalk); }
+  .content { padding:1.25rem 1rem 6.5rem; }
+  .wrap { max-width:68rem; margin:0 auto; }
+  .tabs { position:fixed; inset:auto 0 0 0; z-index:30; display:flex; background:#fff; border-top:1px solid var(--line); padding-bottom:env(safe-area-inset-bottom); }
+  .bot-nav { flex:1; display:flex; flex-direction:column; align-items:center; gap:.2rem; padding:.5rem 0 .55rem; font-size:.72rem; font-weight:600; color:var(--muted); }
+  .bot-nav .pill { display:grid; place-items:center; width:3.2rem; height:1.7rem; border-radius:999px; transition:background-color .15s; }
+  .bot-nav.active { color:var(--ink); }
+  .bot-nav.active .pill { background:var(--hl); }
+  @media (min-width:900px) {
+    .shell { position:fixed; inset:0 auto 0 0; width:var(--side-w); height:auto; flex-direction:column; align-items:stretch; justify-content:flex-start; gap:1.75rem; padding:1.5rem 1rem 1.25rem; }
+    .side-nav { display:flex; flex-direction:column; gap:.25rem; }
+    .account { margin-top:auto; flex-direction:column; align-items:stretch; border-top:1px solid rgba(255,255,255,.14); padding-top:1rem; }
+    #user-email { display:block; padding:0 .6rem; font-size:.8rem; color:var(--chalk-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .account-actions { flex-direction:column; }
+    .link-btn { text-align:left; }
+    .tabs { display:none; }
+    .content { margin-left:var(--side-w); padding:2.25rem 2.5rem 4rem; }
+  }
+
+  /* create + detail: two-pane workspace */
+  .split { display:grid; gap:1.25rem; align-items:start; }
+  @media (min-width:1180px) {
+    .split { grid-template-columns:minmax(18rem,24rem) 1fr; gap:2rem; }
+    .split > .pin { position:sticky; top:2.25rem; }
+  }
+  .drop { display:block; border:2px dashed #9fb3a6; border-radius:12px; padding:1.6rem 1rem; text-align:center; cursor:pointer; background:#fafbf8; transition:background-color .15s, border-color .15s; }
+  .drop:hover, .drop:focus-within { background:#fdf8da; border-color:var(--board); }
+  .drop .mark { width:3.25rem; height:3.25rem; border-radius:50%; background:var(--hl); color:var(--board); display:grid; place-items:center; margin:0 auto .6rem; }
+  .drop .mark .i { width:1.5rem; height:1.5rem; }
+  .drop .big { font-weight:700; }
+  .drop .small { font-size:.8rem; color:var(--muted); margin-top:.15rem; }
+  #preview { width:100%; max-height:18rem; object-fit:contain; border-radius:10px; border:1px solid var(--line); background:var(--paper); }
+  .track { height:.6rem; background:var(--line-soft); border-radius:999px; overflow:hidden; }
+  #progress-bar { height:100%; background:var(--hl); border-radius:999px; transition:width .3s; }
+  .ghost { display:none; }
+  #create-result.hidden + .ghost { display:grid; place-items:center; min-height:22rem; padding:2rem; text-align:center; color:var(--muted); border:2px dashed var(--line); border-radius:14px; background-image:repeating-linear-gradient(to bottom, transparent 0, transparent calc(1.75rem - 1px), #e8ece5 calc(1.75rem - 1px), #e8ece5 1.75rem); }
+  .ghost strong { display:block; font-family:var(--display); font-size:1.2rem; color:var(--ink); margin-bottom:.3rem; }
+  @media (max-width:1179px) { #create-result.hidden + .ghost { display:none; } }
+
+  .sheet { background:#fff; border:1px solid var(--line); border-radius:14px; }
+  .sheet-bar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:.75rem; padding:.85rem 1.25rem; border-bottom:1px solid var(--line); border-radius:14px 14px 0 0; background:#fff; }
+  .bar-actions { display:flex; flex-wrap:wrap; gap:.5rem; }
+  .sheet-body { padding:1.25rem; }
+  @media (min-width:900px) { .sheet-bar { position:sticky; top:0; z-index:10; background:rgba(255,255,255,.96); backdrop-filter:blur(6px); } }
+  .raw { margin-top:1rem; background:#fff; border:1px solid var(--line); border-radius:10px; padding:.8rem 1rem; }
+  .raw summary { font-size:.88rem; font-weight:600; }
+  .raw pre { white-space:pre-wrap; font:inherit; font-size:.8rem; color:var(--muted); margin:.75rem 0 0; }
+  .photo { background:#fff; border:1px solid var(--line); border-radius:14px; padding:.6rem; }
+  .photo img { width:100%; max-height:60vh; object-fit:contain; border-radius:8px; background:var(--paper); }
+  .photo figcaption { font-size:.8rem; color:var(--muted); padding:.5rem .3rem 0; }
+  .back { display:inline-flex; align-items:center; gap:.4rem; font-weight:600; font-size:.9rem; color:var(--board); margin-bottom:1rem; }
+  .back:hover { text-decoration:underline; text-underline-offset:3px; }
+
+  /* editor */
+  .editor { display:grid; gap:1.2rem; }
+  .ed-row { display:grid; grid-template-columns:1fr 1fr; gap:.75rem; }
+  .ed-row > * { min-width:0; }
+  @media (max-width:419px) { .ed-row { grid-template-columns:1fr; } }
+  .ed-block { padding-top:1.2rem; border-top:1px solid var(--line-soft); }
+  .fig { display:grid; gap:.6rem; padding:.8rem; border:1px solid var(--line); border-left:4px solid var(--hl); border-radius:8px; background:#fafbf8; }
+  .fig + .fig { margin-top:.75rem; }
+  .fig-head { display:flex; justify-content:space-between; align-items:center; }
+  .fig-tag { font-size:.8rem; font-weight:700; color:var(--board); }
+  .fig-del { font-size:.8rem; color:var(--danger); text-decoration:underline; }
+  .fig-img { width:100%; max-height:18rem; object-fit:contain; background:#fff; border:1px solid var(--line); border-radius:6px; }
+  .note-empty { font-size:.88rem; color:var(--muted); }
+
+  /* library */
+  .lib-head { display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:1rem; margin-bottom:1.25rem; }
+  .search-wrap { position:relative; margin-bottom:1.25rem; }
+  .search-wrap .i { position:absolute; left:.9rem; top:50%; transform:translateY(-50%); color:var(--muted); }
+  .search-wrap .field { padding:.8rem 1rem .8rem 2.6rem; }
+  .crumb { display:flex; align-items:center; gap:.5rem; font-size:.9rem; margin-bottom:1rem; }
+  .crumb button { font-weight:600; color:var(--board); text-decoration:underline; text-underline-offset:3px; }
+  .lib-folders { display:grid; grid-template-columns:repeat(auto-fill,minmax(14rem,1fr)); gap:1.6rem 1rem; padding-top:.9rem; }
+  .folder { position:relative; display:block; width:100%; min-height:7.5rem; padding:1.5rem 1.1rem 1rem; text-align:left; background:#dbe8d8; color:#173a25; border-radius:4px 14px 14px 14px; transition:background-color .15s; }
+  .folder::before { content:''; position:absolute; left:0; top:-.9rem; width:42%; height:1rem; background:inherit; border-radius:8px 8px 0 0; }
+  .folder::after { content:''; position:absolute; left:.6rem; right:.6rem; top:.5rem; height:.45rem; background:rgba(255,255,255,.75); border-radius:3px; }
+  .folder:hover { background:#cfe0cb; }
+  .folder-name { display:block; font-family:var(--display); font-size:1.15rem; font-weight:700; line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .folder-meta { display:block; font-size:.82rem; opacity:.8; margin-top:.35rem; }
+  .lib-notes { background:#fff; border:1px solid var(--line); border-radius:14px; }
+  .note-row { display:grid; grid-template-columns:5.5rem 1fr auto; gap:1rem; align-items:center; padding:.8rem 1rem; cursor:pointer; }
+  .note-row + .note-row { border-top:1px solid var(--line-soft); }
+  .note-row:first-child { border-radius:14px 14px 0 0; }
+  .note-row:last-child { border-radius:0 0 14px 14px; }
+  .note-row:only-child { border-radius:14px; }
+  .note-row:hover { background:#f7f8f4; }
+  .note-thumb { width:5.5rem; height:4.25rem; object-fit:cover; border-radius:8px; border:1px solid var(--line-soft); background:var(--line-soft); }
+  .note-main { min-width:0; }
+  .note-title { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; text-align:left; font-weight:700; line-height:1.3; }
+  .note-meta { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; margin-top:.35rem; font-size:.82rem; color:var(--muted); }
+  .chip { padding:.1rem .6rem; border-radius:999px; background:var(--hl-soft); color:#5b4a00; font-weight:600; font-size:.76rem; }
+  .note-actions { display:flex; gap:.4rem; }
+  .note-actions .btn { padding:.5rem .75rem; font-size:.85rem; }
+  @media (max-width:599px) {
+    .note-row { grid-template-columns:4.5rem 1fr; }
+    .note-thumb { width:4.5rem; height:3.6rem; }
+    .note-actions { grid-column:2; }
+  }
+  #lib-empty { text-align:center; color:var(--muted); padding:3.5rem 1rem; }
+  #lib-empty .i { width:3rem; height:3rem; stroke-width:1.5; margin:0 auto .75rem; color:var(--board); }
+  .account-card { max-width:28rem; margin:0 auto; display:grid; gap:1rem; }
+
+  /* toast */
+  #toast { position:fixed; top:1rem; left:50%; transform:translate(-50%,-8px); z-index:50; opacity:0; pointer-events:none; max-width:min(92vw,32rem); padding:.7rem 1.2rem; border-radius:999px; background:var(--board); color:var(--chalk); font-size:.9rem; font-weight:500; border-left:6px solid var(--hl); transition:opacity .3s ease, transform .3s ease; }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="logo" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#f5d547"/><rect x="16" y="12" width="28" height="38" rx="4" fill="#14302a"/><rect x="21" y="20" width="18" height="3" rx="1.5" fill="#eef2ea"/><rect x="21" y="27" width="18" height="3" rx="1.5" fill="#eef2ea"/><rect x="21" y="34" width="11" height="3" rx="1.5" fill="#eef2ea"/><path d="M47 24l5 5-17 17-7 2 2-7z" fill="#fff" stroke="#14302a" stroke-width="2" stroke-linejoin="round"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></symbol>
+  <symbol id="i-save" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M10 11v6M14 11v6"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 17v4M17 19h4"/></symbol>
+</svg>
+
+<!-- ============ LANDING (logged out) ============ -->
+<section id="view-login" class="hidden land">
+  <header class="land-top">
+    <div class="brand"><svg class="logo" aria-hidden="true"><use href="#logo"/></svg><span class="name">Board to Notes</span></div>
+    <div class="land-cta">
+      <button type="button" data-auth="login">Sign in</button>
+      <button type="button" data-auth="signup">Sign up</button>
+    </div>
+  </header>
+
+  <div class="land-main">
+    <div class="land-story">
+      <span class="tag l-in" style="--i:0">AI notes from your board</span>
+      <h1><span class="ln"><span style="--i:0">Snap your board.</span></span><span class="ln"><span style="--i:1">Get clean, printable notes.</span></span></h1>
+      <p class="l-in" style="--i:1">Upload a photo of your whiteboard or notebook. Get a title, main points and key definitions in seconds, saved to your library and ready as a PDF.</p>
+      <ul class="ticks l-in" style="--i:2">
+        <li>Reads handwriting and messy boards</li>
+        <li>Edit titles, points and definitions</li>
+        <li>Download one summary, or all of them as one PDF</li>
+      </ul>
+
+      <div class="demo l-in" style="--i:3" aria-hidden="true">
+        <div class="d-photo">
+          <svg viewBox="0 0 240 160">
+            <path class="ch" style="--n:0" pathLength="1" d="M16 22c6-8 12 8 18 0s12 8 18 0 12 8 18 0 12 8 18 0 12 8 18 0"/>
+            <path class="ch" style="--n:1" pathLength="1" d="M16 33h100"/>
+            <circle class="ch" style="--n:2" pathLength="1" cx="160" cy="98" r="48"/>
+            <circle class="ch" style="--n:3" pathLength="1" cx="160" cy="98" r="30"/>
+            <circle class="ch" style="--n:4" pathLength="1" cx="160" cy="98" r="13"/>
+            <path class="ch" style="--n:5" pathLength="1" d="M16 76c5-6 10 6 15 0s10 6 15 0"/>
+            <path class="ch" style="--n:6" pathLength="1" d="M16 102c5-6 10 6 15 0s10 6 15 0 10 6 15 0"/>
+            <path class="ch" style="--n:7" pathLength="1" d="M16 128c5-6 10 6 15 0s10 6 15 0 10 6 15 0 10 6 15 0"/>
+          </svg>
+          <span class="d-scan"></span>
+        </div>
+        <svg class="d-arrow" viewBox="0 0 80 40"><path pathLength="1" d="M4 30C24 2 54 4 72 22"/><path pathLength="1" d="M60 20l13 3-5 12"/></svg>
+        <div class="d-sheet">
+          <h4 class="d-line" style="--n:0">Network types</h4>
+          <span class="d-line" style="--n:1">Networks are grouped by size.</span>
+          <span class="d-line" style="--n:2">LAN: one room, building or campus</span>
+          <span class="d-line" style="--n:3">MAN: covers a whole city</span>
+          <span class="d-line" style="--n:4"><span class="d-hl">WAN: links cities and countries</span></span>
+          <span class="d-line" style="--n:5">Internet: a network of networks</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="land-auth">
+      <div class="auth-box">
+        <form id="login-form" class="form">
+          <div class="form-head">
+            <h2>Welcome back</h2>
+            <p class="sub">Log in to your account</p>
+          </div>
+          <div>
+            <label class="lbl" for="l-email">Email</label>
+            <input id="l-email" type="email" required autocomplete="username" class="field">
+          </div>
+          <div>
+            <label class="lbl" for="l-pass">Password</label>
+            <input id="l-pass" type="password" required autocomplete="current-password" class="field">
+          </div>
+          <p id="l-err" class="err hidden"></p>
+          <button class="btn btn-primary">Sign in</button>
+          <p class="switch">New here? <button type="button" id="to-signup">Create new account</button></p>
+        </form>
+
+        <form id="signup-form" class="hidden form">
+          <div class="form-head">
+            <h2>Create account</h2>
+            <p class="sub">Free and takes 10 seconds</p>
+          </div>
+          <div>
+            <label class="lbl" for="s-email">Email</label>
+            <input id="s-email" type="email" required autocomplete="username" class="field">
+          </div>
+          <div>
+            <label class="lbl" for="s-pass">Password <span class="hint">· at least 8 characters</span></label>
+            <input id="s-pass" type="password" required minlength="8" autocomplete="new-password" class="field">
+          </div>
+          <div>
+            <label class="lbl" for="s-pass2">Confirm password</label>
+            <input id="s-pass2" type="password" required minlength="8" autocomplete="new-password" class="field">
+          </div>
+          <p id="s-err" class="err hidden"></p>
+          <button id="s-btn" class="btn btn-primary">Create account</button>
+          <p class="switch">Already have an account? <button type="button" id="to-login">Log in</button></p>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="marquee" aria-hidden="true">
+    <div class="marquee-track">
+      <span>Computer Science</span><span>Mathematics</span><span>Physics</span><span>Chemistry</span><span>Biology</span><span>English</span><span>Urdu</span><span>History</span><span>Islamiyat</span><span>Pakistan Studies</span><span>Economics</span>
+      <span>Computer Science</span><span>Mathematics</span><span>Physics</span><span>Chemistry</span><span>Biology</span><span>English</span><span>Urdu</span><span>History</span><span>Islamiyat</span><span>Pakistan Studies</span><span>Economics</span>
+    </div>
+  </div>
+
+  <div class="land-feats">
+    <h2 class="reveal">Everything you need from one photo</h2>
+    <p class="reveal" style="--i:1">From messy board to organized notes, without the copying.</p>
+    <div class="feat-list">
+      <div class="feat reveal" style="--i:1">
+        <div class="mark"><svg class="i" aria-hidden="true"><use href="#i-camera"/></svg></div>
+        <h3>Reads any board</h3>
+        <p>Works with whiteboards, notebooks and class notes, including handwriting.</p>
+      </div>
+      <div class="feat reveal" style="--i:2">
+        <div class="mark"><svg class="i" aria-hidden="true"><use href="#i-spark"/></svg></div>
+        <h3>Smart summaries</h3>
+        <p>Gets the title, subject, main points and key definitions. Edit anything you want.</p>
+      </div>
+      <div class="feat reveal" style="--i:3">
+        <div class="mark"><svg class="i" aria-hidden="true"><use href="#i-file"/></svg></div>
+        <h3>PDF in one tap</h3>
+        <p>Download one summary, or your whole library as a single PDF.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="cta-wrap">
+    <div class="cta-band reveal">
+      <div>
+        <h2>Turn your next board into notes.</h2>
+        <p>Free and takes 10 seconds.</p>
+      </div>
+      <button type="button" data-auth="signup" class="btn btn-primary">Create account</button>
+    </div>
+  </div>
+  <footer class="land-foot">© 2026 Board to Notes</footer>
+</section>
+
+<!-- ============ APP ============ -->
+<div id="app" class="hidden">
+
+  <header class="shell">
+    <div class="brand"><svg class="logo" aria-hidden="true"><use href="#logo"/></svg><h1 class="name">Board to Notes</h1></div>
+    <nav class="side-nav" aria-label="Main">
+      <button data-nav="create" class="hdr-nav"><svg class="i" aria-hidden="true"><use href="#i-edit"/></svg>New Summary</button>
+      <button data-nav="library" class="hdr-nav"><svg class="i" aria-hidden="true"><use href="#i-folder"/></svg>Library</button>
+    </nav>
+    <div class="account">
+      <span id="user-email"></span>
+      <div class="account-actions">
+        <button id="pw-btn" class="link-btn">Password</button>
+        <button id="logout-btn" class="link-btn">Log out</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="content"><div class="wrap">
+
+    <!-- CREATE -->
+    <section id="view-create">
+      <div class="split">
+        <div class="panel pin">
+          <h2>1. Upload your board</h2>
+          <p class="sub" style="margin:.2rem 0 1rem">Photo of a whiteboard, notebook or class notes. Clear, well-lit photos work best.</p>
+
+          <label for="file" class="drop">
+            <div class="mark"><svg class="i" aria-hidden="true"><use href="#i-camera"/></svg></div>
+            <div class="big">Tap to choose an image</div>
+            <div class="small">JPG, PNG, HEIC…</div>
+            <input id="file" type="file" accept="image/*" class="sr-only">
+          </label>
+
+          <div id="preview-wrap" class="hidden" style="margin-top:1rem">
+            <img id="preview" alt="Board preview">
+          </div>
+
+          <button id="make-btn" disabled class="btn btn-primary" style="width:100%;margin-top:1rem;padding:.85rem">Read board & create summary</button>
+
+          <div id="progress-wrap" class="hidden" style="margin-top:1rem">
+            <div style="display:flex;justify-content:space-between;font-size:.85rem;margin-bottom:.35rem">
+              <span id="progress-text">Starting…</span><span id="progress-pct">0%</span>
+            </div>
+            <div class="track"><div id="progress-bar" style="width:0%"></div></div>
+          </div>
+        </div>
+
+        <div>
+          <div id="ai-error" class="hidden rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700"></div>
+          <div id="create-result" class="hidden">
+            <div class="sheet">
+              <div class="sheet-bar">
+                <h2>2. Review your summary</h2>
+                <div class="bar-actions">
+                  <button id="save-lib-btn" class="btn btn-soft"><svg class="i" aria-hidden="true"><use href="#i-save"/></svg>Save to Library</button>
+                  <button id="save-pdf-btn" class="btn btn-primary"><svg class="i" aria-hidden="true"><use href="#i-file"/></svg>Save to PDF</button>
+                </div>
+              </div>
+              <div class="sheet-body"><div id="create-editor"></div></div>
+            </div>
+            <details class="raw">
+              <summary>Raw text read from the board</summary>
+              <pre id="raw-text"></pre>
+            </details>
+          </div>
+          <div class="ghost"><div><strong>Your summary will appear here</strong>Upload a board photo and press “Read board & create summary”.</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- LIBRARY -->
+    <section id="view-library" class="hidden">
+      <div class="lib-head">
+        <div>
+          <h2 class="page-title">Your Library</h2>
+          <p id="lib-count" class="sub"></p>
+        </div>
+        <button id="all-pdf-btn" class="btn btn-primary">Download all as one PDF</button>
+      </div>
+      <div class="search-wrap">
+        <svg class="i" aria-hidden="true"><use href="#i-search"/></svg>
+        <input id="search" type="search" placeholder="Search by title, date or subject…" aria-label="Search summaries" class="field">
+      </div>
+      <div id="lib-crumb" class="hidden crumb">
+        <button id="lib-up">← All folders</button>
+        <span style="color:#98a39c">/</span>
+        <span id="lib-folder-name" style="font-weight:700"></span>
+      </div>
+      <div id="lib-grid"></div>
+      <div id="lib-empty" class="hidden">
+        <svg class="i" aria-hidden="true"><use href="#i-folder"/></svg>
+        No summaries yet. Create your first one from the New Summary tab.
+      </div>
+    </section>
+
+    <!-- ACCOUNT -->
+    <section id="view-account" class="hidden">
+      <form id="pw-form" class="panel account-card">
+        <h2>Change password</h2>
+        <div>
+          <label class="lbl" for="pw-cur">Current password</label>
+          <input id="pw-cur" type="password" required autocomplete="current-password" class="field">
+        </div>
+        <div>
+          <label class="lbl" for="pw-new">New password <span class="hint">· at least 8 characters</span></label>
+          <input id="pw-new" type="password" required minlength="8" autocomplete="new-password" class="field">
+        </div>
+        <div>
+          <label class="lbl" for="pw-new2">Confirm new password</label>
+          <input id="pw-new2" type="password" required minlength="8" autocomplete="new-password" class="field">
+        </div>
+        <p id="pw-err" class="err hidden"></p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
+          <button type="button" id="pw-cancel" class="btn btn-soft">Cancel</button>
+          <button id="pw-save" class="btn btn-primary">Update password</button>
+        </div>
+        <p class="sub" style="font-size:.8rem">Other devices where you are logged in will be logged out.</p>
+      </form>
+    </section>
+
+    <!-- DETAIL -->
+    <section id="view-detail" class="hidden">
+      <button id="back-btn" class="back"><svg class="i" aria-hidden="true"><use href="#i-back"/></svg>Back to library</button>
+      <div class="split">
+        <figure class="photo pin">
+          <img id="d-img" alt="Original board">
+          <figcaption>Original board photo</figcaption>
+        </figure>
+        <div class="sheet">
+          <div class="sheet-bar">
+            <h2>Summary</h2>
+            <div class="bar-actions">
+              <button id="d-save" class="btn btn-primary"><svg class="i" aria-hidden="true"><use href="#i-save"/></svg>Save changes</button>
+              <button id="d-pdf" class="btn btn-soft"><svg class="i" aria-hidden="true"><use href="#i-file"/></svg>Download PDF</button>
+              <button id="d-del" class="btn btn-danger"><svg class="i" aria-hidden="true"><use href="#i-trash"/></svg>Delete</button>
+            </div>
+          </div>
+          <div class="sheet-body"><div id="detail-editor"></div></div>
+        </div>
+      </div>
+    </section>
+  </div></main>
+
+  <nav class="tabs" aria-label="Main">
+    <button data-nav="create" class="bot-nav"><span class="pill"><svg class="i" aria-hidden="true"><use href="#i-edit"/></svg></span>New Summary</button>
+    <button data-nav="library" class="bot-nav"><span class="pill"><svg class="i" aria-hidden="true"><use href="#i-folder"/></svg></span>Library</button>
+  </nav>
+</div>
+
+<datalist id="subjects"></datalist>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* ---------- helpers ---------- */
+const $ = id => document.getElementById(id);
+const TOKEN_KEY = 'boardToNotes.token';
+const SUBJECTS = ['Computer Science','Mathematics','Physics','Chemistry','Biology','English','Urdu','History','Islamiyat','Pakistan Studies','Economics','General'];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const todayISO = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10); };
+const fmtDate = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { day:'numeric', month:'short', year:'numeric' }) : '';
+const inputCls = 'field';
+const token = () => localStorage.getItem(TOKEN_KEY);
+
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.style.opacity = 1; t.style.transform = 'translate(-50%,0)';
+  clearTimeout(toast._h);
+  toast._h = setTimeout(() => { t.style.opacity = 0; t.style.transform = 'translate(-50%,-8px)'; }, 3000);
+}
+
+/* ---------- API ---------- */
+async function api(path, opts = {}) {
+  const headers = { 'content-type': 'application/json' };
+  if (token()) headers.authorization = 'Bearer ' + token();
+  const res = await fetch(path, { ...opts, headers });
+  if (res.status === 401) { clearSession(); throw new Error('Please log in again.'); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
+  return data;
+}
+
+/* ---------- state ---------- */
+let notes = [];                 // list from server (no images)
+const thumbs = new Map();       // id -> image data URL (cached in memory)
+
+async function refreshNotes() {
+  const d = await api('/api/notes');
+  notes = d.notes;
+}
+
+/* ---------- auth / screens ---------- */
+function showLogin() {
+  showForm('login');
+  $('app').classList.add('hidden');
+  $('view-login').classList.remove('hidden');
+}
+function showApp() {
+  $('view-login').classList.add('hidden');
+  $('app').classList.remove('hidden');
+}
+function clearSession() {
+  localStorage.removeItem(TOKEN_KEY);
+  notes = []; thumbs.clear();
+  showLogin();
+}
+
+$('login-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  $('l-err').classList.add('hidden');
+  try {
+    const res = await fetch('/api/login', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: $('l-email').value, password: $('l-pass').value })
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || 'Login failed.');
+    localStorage.setItem(TOKEN_KEY, d.token);
+    $('l-pass').value = '';
+    await init();
+  } catch (err) {
+    $('l-err').textContent = err.message;
+    $('l-err').classList.remove('hidden');
+  }
+});
+
+const showForm = which => {
+  $('login-form').classList.toggle('hidden', which !== 'login');
+  $('signup-form').classList.toggle('hidden', which !== 'signup');
+};
+$('to-signup').addEventListener('click', () => showForm('signup'));
+$('to-login').addEventListener('click', () => showForm('login'));
+document.querySelectorAll('[data-auth]').forEach(b => b.addEventListener('click', () => {
+  const mode = b.dataset.auth;
+  showForm(mode);
+  const target = $(mode === 'signup' ? 's-email' : 'l-email');
+  target.closest('form').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setTimeout(() => target.focus(), 300);
+}));
+
+$('signup-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const err = $('s-err'); err.classList.add('hidden');
+  const fail = m => { err.textContent = m; err.classList.remove('hidden'); };
+  const email = $('s-email').value.trim(), password = $('s-pass').value;
+  if (password !== $('s-pass2').value) return fail('Passwords do not match.');
+  $('s-btn').disabled = true;
+  try {
+    const r = await fetch('/api/signup', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return fail(d.error || 'Could not create the account.');
+    localStorage.setItem(TOKEN_KEY, d.token);
+    ['s-pass', 's-pass2'].forEach(id => { $(id).value = ''; });
+    toast('Account created ✓');
+    await init();
+  } catch (ex) {
+    fail(ex.message || 'Network error.');
+  } finally {
+    $('s-btn').disabled = false;
+  }
+});
+
+$('pw-btn').addEventListener('click', () => { $('pw-form').reset(); $('pw-err').classList.add('hidden'); show('account'); });
+$('pw-cancel').addEventListener('click', () => show('create'));
+$('pw-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const err = $('pw-err'); err.classList.add('hidden');
+  const fail = m => { err.textContent = m; err.classList.remove('hidden'); };
+  if ($('pw-new').value !== $('pw-new2').value) return fail('New passwords do not match.');
+  $('pw-save').disabled = true;
+  try {
+    await api('/api/password', { method: 'POST', body: JSON.stringify({ current: $('pw-cur').value, next: $('pw-new').value }) });
+    $('pw-form').reset();
+    toast('Password updated ✓');
+    show('create');
+  } catch (ex) { fail(ex.message); }
+  finally { $('pw-save').disabled = false; }
+});
+
+$('logout-btn').addEventListener('click', async () => {
+  try { await api('/api/logout', { method: 'POST' }); } catch {}
+  clearSession();
+});
+
+/* ---------- navigation ---------- */
+function show(name) {
+  ['create', 'library', 'detail', 'account'].forEach(v => $('view-' + v).classList.toggle('hidden', v !== name));
+  const active = name === 'detail' ? 'library' : name;
+  document.querySelectorAll('.hdr-nav').forEach(b => {
+    const on = b.dataset.nav === active;
+    b.classList.toggle('active', on);
+  });
+  document.querySelectorAll('.bot-nav').forEach(b => {
+    const on = b.dataset.nav === active;
+    b.classList.toggle('active', on);
+  });
+  if (name === 'library') renderLibrary();
+  window.scrollTo(0, 0);
+}
+document.querySelectorAll('[data-nav]').forEach(b => b.addEventListener('click', () => { if (b.dataset.nav === 'library') libFolder = null; show(b.dataset.nav); }));
+
+/* ---------- image compression ---------- */
+function compressImage(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      let out = '';
+      for (const [maxW, q] of [[1800, 0.82], [1500, 0.72], [1200, 0.65]]) {
+        const s = Math.min(1, maxW / img.width);
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        out = c.toDataURL('image/jpeg', q);
+        if (out.length <= 1500000) break;
+      }
+      URL.revokeObjectURL(url);
+      resolve(out);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not open this image.')); };
+    img.src = url;
+  });
+}
+
+/* ---------- figures (diagrams / graphs cropped from the board photo) ---------- */
+const figState = { c: [], d: [] };
+const figImage = { c: '', d: '' };
+const cropCache = new Map();
+
+function loadImg(src) {
+  return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+}
+async function cropFigure(image, box) {
+  if (!image || !box) return null;
+  const key = image.length + ':' + image.slice(-30) + ':' + box.join(',');
+  if (cropCache.has(key)) return cropCache.get(key);
+  try {
+    const img = await loadImg(image);
+    const pad = 12; // a little breathing room, in 0-1000 units
+    const y1 = Math.max(0, box[0] - pad), x1 = Math.max(0, box[1] - pad);
+    const y2 = Math.min(1000, box[2] + pad), x2 = Math.min(1000, box[3] + pad);
+    const sx = Math.round(x1 / 1000 * img.width), sy = Math.round(y1 / 1000 * img.height);
+    const sw = Math.max(1, Math.round((x2 - x1) / 1000 * img.width));
+    const sh = Math.max(1, Math.round((y2 - y1) / 1000 * img.height));
+    const c = document.createElement('canvas');
+    c.width = sw; c.height = sh;
+    c.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+    const out = { url: c.toDataURL('image/jpeg', 0.9), w: sw, h: sh };
+    cropCache.set(key, out);
+    return out;
+  } catch { return null; }
+}
+
+function syncFigs(p) {
+  const box = $(`${p}-figs`);
+  if (!box) return;
+  (figState[p] || []).forEach((f, i) => {
+    const t = box.querySelector(`[data-ft="${i}"]`), e = box.querySelector(`[data-fe="${i}"]`);
+    if (t) f.title = t.value.trim() || f.title;
+    if (e) f.explanation = e.value.trim();
+  });
+}
+
+function renderFigs(p, image) {
+  const box = $(`${p}-figs`);
+  if (!box) return;
+  syncFigs(p);
+  if (image) figImage[p] = image;
+  const list = figState[p] || [];
+  box.innerHTML = list.length ? list.map((f, i) => `
+    <div class="fig">
+      <div class="fig-head">
+        <span class="fig-tag">Figure ${i + 1} · ${esc(f.type || 'diagram')}</span>
+        <button type="button" data-fdel="${i}" class="fig-del">Remove</button>
+      </div>
+      <img data-fi="${i}" class="hidden fig-img" alt="">
+      <input data-ft="${i}" class="field" value="${esc(f.title)}">
+      <textarea data-fe="${i}" rows="3" class="field">${esc(f.explanation)}</textarea>
+    </div>`).join('')
+    : '<p class="note-empty">No diagrams or graphs were detected on this board.</p>';
+  box.onclick = e => {
+    const b = e.target.closest('[data-fdel]');
+    if (!b) return;
+    syncFigs(p);
+    figState[p].splice(+b.dataset.fdel, 1);
+    renderFigs(p);
+  };
+  list.forEach(async (f, i) => {
+    const c = await cropFigure(figImage[p], f.box);
+    const el = box.querySelector(`[data-fi="${i}"]`);
+    if (el && c) { el.src = c.url; el.classList.remove('hidden'); }
+  });
+}
+
+/* ---------- editor (shared by create + detail) ---------- */
+const sectionsToText = secs => (secs || [])
+  .map(s => `## ${s.heading}\n` + (s.bullets || []).map(b => '- ' + b).join('\n')).join('\n\n');
+function textToSections(t) {
+  const out = []; let cur = null;
+  String(t || '').split('\n').forEach(raw => {
+    const line = raw.trim();
+    if (!line) return;
+    const hd = line.match(/^#{1,3}\s*(.+)$/);
+    if (hd) { cur = { heading: hd[1].trim(), bullets: [] }; out.push(cur); return; }
+    if (!cur) { cur = { heading: 'Notes', bullets: [] }; out.push(cur); }
+    cur.bullets.push(line.replace(/^[-•*]\s*/, ''));
+  });
+  return out.filter(s => s.bullets.length);
+}
+
+function editorHTML(p, n) {
+  figState[p] = JSON.parse(JSON.stringify(n.figures || []));
+  const defs = (n.definitions || []).map(d => d.term ? `${d.term}: ${d.def}` : d.def).join('\n');
+  return `
+  <div class="editor">
+    <div>
+      <label class="lbl" for="${p}-title">Title</label>
+      <input id="${p}-title" class="${inputCls} field-title" value="${esc(n.title)}">
+    </div>
+    <div class="ed-row">
+      <div>
+        <label class="lbl" for="${p}-subject">Subject</label>
+        <input id="${p}-subject" list="subjects" class="${inputCls}" value="${esc(n.subject)}">
+      </div>
+      <div>
+        <label class="lbl" for="${p}-date">Date</label>
+        <input id="${p}-date" type="date" class="${inputCls}" value="${esc(n.date)}">
+      </div>
+    </div>
+    <div class="ed-block">
+      <label class="lbl" for="${p}-summary">Overview</label>
+      <textarea id="${p}-summary" rows="3" class="${inputCls} field-ruled">${esc(n.summary || '')}</textarea>
+    </div>
+    <div class="ed-block">
+      <label class="lbl" for="${p}-sections">Detailed notes <span class="hint">· "## Heading" then one note per line</span></label>
+      <textarea id="${p}-sections" rows="14" class="${inputCls} field-ruled">${esc(sectionsToText(n.sections))}</textarea>
+    </div>
+    <div class="ed-block">
+      <label class="lbl">Diagrams, graphs &amp; tables <span class="hint">· cropped from your board photo</span></label>
+      <div id="${p}-figs"></div>
+    </div>
+    <div class="ed-block">
+      <label class="lbl" for="${p}-points">Key takeaways <span class="hint">· one per line</span></label>
+      <textarea id="${p}-points" rows="6" class="${inputCls} field-ruled">${esc((n.points || []).join('\n'))}</textarea>
+    </div>
+    <div class="ed-block">
+      <label class="lbl" for="${p}-defs">Key definitions <span class="hint">· "Term: definition", one per line</span></label>
+      <textarea id="${p}-defs" rows="5" class="${inputCls} field-ruled">${esc(defs)}</textarea>
+    </div>
+  </div>`;
+}
+
+function readEditor(p) {
+  syncFigs(p);
+  const points = $(`${p}-points`).value.split('\n').map(s => s.trim()).filter(Boolean);
+  const definitions = $(`${p}-defs`).value.split('\n').map(s => s.trim()).filter(Boolean).map(line => {
+    const i = line.indexOf(':');
+    return (i > 0 && i < 60) ? { term: line.slice(0, i).trim(), def: line.slice(i + 1).trim() }
+                             : { term: '', def: line };
+  });
+  return {
+    title: $(`${p}-title`).value.trim() || 'Untitled',
+    subject: $(`${p}-subject`).value.trim() || 'General',
+    date: $(`${p}-date`).value || todayISO(),
+    summary: $(`${p}-summary`).value.trim(),
+    sections: textToSections($(`${p}-sections`).value),
+    figures: JSON.parse(JSON.stringify(figState[p] || [])),
+    points, definitions
+  };
+}
+
+/* ---------- CREATE ---------- */
+let pendingFile = null, draft = null;
+
+const progress = (text, pct) => {
+  $('progress-wrap').classList.remove('hidden');
+  $('progress-text').textContent = text;
+  $('progress-pct').textContent = Math.round(pct) + '%';
+  $('progress-bar').style.width = pct + '%';
+};
+
+$('file').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  pendingFile = f;
+  $('preview').src = URL.createObjectURL(f);
+  $('preview-wrap').classList.remove('hidden');
+  $('make-btn').disabled = false;
+  draft = null;
+  $('create-result').classList.add('hidden');
+});
+
+$('make-btn').addEventListener('click', async () => {
+  if (!pendingFile) return;
+  $('make-btn').disabled = true;
+  let ticker;
+  try {
+    progress('Preparing image', 10);
+    const image = await compressImage(pendingFile);
+    $('ai-error').classList.add('hidden');
+
+    const t0 = Date.now();
+    const tick = () => {
+      const t = (Date.now() - t0) / 1000;
+      progress(`AI is reading your board and writing notes… ${Math.round(t)}s`, 35 + 55 * (1 - Math.exp(-t / 25)));
+    };
+    tick();
+    ticker = setInterval(tick, 500);
+    let s;
+    try {
+      s = await Promise.race([
+        api('/api/summarize', { method: 'POST', body: JSON.stringify({ image }) }),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('Timed out waiting for the AI.')), 150000))
+      ]);
+    } catch (err) {
+      clearInterval(ticker);
+      const msg = /failed to fetch|network|load failed/i.test(err.message)
+        ? 'Lost the connection to the server. Check your internet and try again.'
+        : err.message;
+      progress('Could not create the summary', 0);
+      showRetry(msg, image);
+      return;
+    }
+    clearInterval(ticker);
+    progress('Done', 100);
+
+    draft = {
+      title: s.title, subject: s.subject, summary: s.summary || '', sections: s.sections || [],
+      figures: s.figures || [], points: s.points, definitions: s.definitions,
+      rawText: s.transcription || '', image, date: todayISO()
+    };
+    renderCreate();
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    clearInterval(ticker);
+    $('make-btn').disabled = false;
+  }
+});
+
+function showRetry(msg, image) {
+  const box = $('ai-error');
+  box.innerHTML = `
+    <p class="font-semibold">The summary was not created</p>
+    <p class="mt-1">${esc(msg)}</p>
+    <div class="flex flex-wrap gap-2 mt-3">
+      <button type="button" id="ai-retry" class="btn btn-primary text-sm py-2">Try again</button>
+      <button type="button" id="ai-manual" class="btn btn-soft text-sm py-2">Fill in manually</button>
+    </div>`;
+  box.classList.remove('hidden');
+  $('ai-retry').onclick = () => { box.classList.add('hidden'); $('make-btn').click(); };
+  $('ai-manual').onclick = () => {
+    box.classList.add('hidden');
+    draft = { title: '', subject: 'General', summary: '', sections: [], figures: [], points: [], definitions: [],
+              rawText: '', image, date: todayISO() };
+    renderCreate();
+  };
+}
+
+function renderCreate() {
+  $('create-editor').innerHTML = editorHTML('c', draft);
+  renderFigs('c', draft.image);
+  $('raw-text').textContent = (draft.rawText || '').trim() || '(no text detected)';
+  $('create-result').classList.remove('hidden');
+  $('create-result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function saveDraft() {
+  Object.assign(draft, readEditor('c'));
+  if (!draft.id) {
+    const r = await api('/api/notes', {
+      method: 'POST',
+      body: JSON.stringify({
+        title: draft.title, subject: draft.subject, date: draft.date,
+        points: draft.points, definitions: draft.definitions,
+        summary: draft.summary, sections: draft.sections, figures: draft.figures,
+        rawText: draft.rawText, image: draft.image
+      })
+    });
+    draft.id = r.id;
+    thumbs.set(r.id, draft.image);
+  } else {
+    await api(`/api/notes/${draft.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        title: draft.title, subject: draft.subject, date: draft.date,
+        points: draft.points, definitions: draft.definitions,
+        summary: draft.summary, sections: draft.sections, figures: draft.figures
+      })
+    });
+  }
+  await refreshNotes();
+  return { ...draft };
+}
+
+$('save-lib-btn').addEventListener('click', async () => {
+  try { await saveDraft(); toast('Saved to library ✓'); }
+  catch (err) { toast(err.message); }
+});
+$('save-pdf-btn').addEventListener('click', async () => {
+  try { const n = await saveDraft(); toast('Building PDF…'); await downloadOne(n); toast('Saved and PDF downloaded ✓'); }
+  catch (err) { toast(err.message); }
+});
+
+/* ---------- LIBRARY ---------- */
+let libFolder = null;   // subject key of the open folder, or null for the folder overview
+const subjKey = s => String(s || 'General').trim().toLowerCase();
+
+function groupBySubject() {
+  const map = new Map();
+  [...notes].sort((a, b) => b.createdAt - a.createdAt).forEach(n => {
+    const k = subjKey(n.subject);
+    if (!map.has(k)) map.set(k, { key: k, name: n.subject.trim() || 'General', items: [] });
+    map.get(k).items.push(n);
+  });
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+const ico = n => `<svg class="i" aria-hidden="true"><use href="#i-${n}"/></svg>`;
+const noteCard = n => `
+    <article data-id="${n.id}" class="note-row">
+      <img data-thumb="${n.id}" src="${thumbs.get(n.id) || ''}" alt="" class="note-thumb">
+      <div class="note-main">
+        <button type="button" class="note-title">${esc(n.title)}</button>
+        <div class="note-meta">
+          <span class="chip">${esc(n.subject)}</span>
+          <span>${fmtDate(n.date)}</span>
+        </div>
+      </div>
+      <div class="note-actions">
+        <button data-act="pdf" class="btn btn-soft">${ico('file')}PDF</button>
+        <button data-act="del" class="btn btn-danger" aria-label="Delete">${ico('trash')}</button>
+      </div>
+    </article>`;
+
+function currentLibList() {
+  const q = $('search').value.trim().toLowerCase();
+  const all = [...notes].sort((a, b) => b.createdAt - a.createdAt);
+  if (q) return all.filter(n => [n.title, n.subject, n.date, fmtDate(n.date)].join(' ').toLowerCase().includes(q));
+  if (libFolder) return all.filter(n => subjKey(n.subject) === libFolder);
+  return all;
+}
+
+function renderLibrary() {
+  const q = $('search').value.trim().toLowerCase();
+  const groups = groupBySubject();
+  if (libFolder && !groups.some(g => g.key === libFolder)) libFolder = null;   // folder became empty
+  const folder = groups.find(g => g.key === libFolder);
+
+  $('lib-grid').className = (q || folder) ? 'lib-notes' : 'lib-folders';
+  $('lib-empty').classList.toggle('hidden', notes.length > 0);
+  $('lib-crumb').classList.toggle('hidden', !folder || !!q);
+  if (folder) $('lib-folder-name').textContent = folder.name;
+
+  if (q) {                                   // searching: flat results across all folders
+    const list = currentLibList();
+    $('lib-count').textContent = `${notes.length} summar${notes.length === 1 ? 'y' : 'ies'} · ${list.length} match${list.length === 1 ? '' : 'es'}`;
+    $('lib-grid').innerHTML = list.map(noteCard).join('');
+    $('all-pdf-btn').textContent = 'Download results as one PDF';
+  } else if (folder) {                       // inside one subject folder
+    $('lib-count').textContent = `${folder.items.length} summar${folder.items.length === 1 ? 'y' : 'ies'} in ${folder.name}`;
+    $('lib-grid').innerHTML = folder.items.map(noteCard).join('');
+    $('all-pdf-btn').textContent = 'Download folder as one PDF';
+  } else {                                   // folder overview
+    $('lib-count').textContent = `${groups.length} folder${groups.length === 1 ? '' : 's'} · ${notes.length} summar${notes.length === 1 ? 'y' : 'ies'}`;
+    $('lib-grid').innerHTML = groups.map(g => `
+      <button type="button" data-folder="${esc(g.key)}" class="folder">
+        <span class="folder-name">${esc(g.name)}</span>
+        <span class="folder-meta">${g.items.length} summar${g.items.length === 1 ? 'y' : 'ies'} · latest ${esc(fmtDate(g.items[0].date))}</span>
+      </button>`).join('');
+    $('all-pdf-btn').textContent = 'Download all as one PDF';
+  }
+  loadThumbs();
+}
+
+// fetch each card's thumbnail from the server once, then reuse it
+async function loadThumbs() {
+  for (const n of notes) {
+    if (!document.querySelector(`img[data-thumb="${n.id}"]`)) continue;   // only cards on screen
+    if (thumbs.has(n.id)) { setThumb(n.id); continue; }
+    try {
+      const r = await api(`/api/notes/${n.id}/image`);
+      thumbs.set(n.id, r.image);
+      setThumb(n.id);
+    } catch {}
+  }
+}
+function setThumb(id) {
+  const el = document.querySelector(`img[data-thumb="${id}"]`);
+  if (el && thumbs.get(id)) el.src = thumbs.get(id);
+}
+
+$('search').addEventListener('input', renderLibrary);
+$('all-pdf-btn').addEventListener('click', () => pdfSafe(downloadAll));
+
+$('lib-up').addEventListener('click', () => { libFolder = null; renderLibrary(); window.scrollTo(0, 0); });
+
+$('lib-grid').addEventListener('click', e => {
+  const fold = e.target.closest('[data-folder]');
+  if (fold) { libFolder = fold.dataset.folder; renderLibrary(); window.scrollTo(0, 0); return; }
+  const card = e.target.closest('[data-id]');
+  if (!card) return;
+  const id = card.dataset.id;
+  const act = e.target.closest('[data-act]')?.dataset.act;
+  if (act === 'pdf') { const n = notes.find(x => x.id === id); if (n) pdfSafe(() => downloadOne(n)); }
+  else if (act === 'del') deleteNote(id);
+  else openDetail(id);
+});
+
+async function deleteNote(id) {
+  if (!confirm('Delete this summary? This cannot be undone.')) return;
+  try {
+    await api(`/api/notes/${id}`, { method: 'DELETE' });
+    thumbs.delete(id);
+    await refreshNotes();
+    toast('Deleted');
+    renderLibrary();
+  } catch (err) { toast(err.message); }
+}
+
+/* ---------- DETAIL ---------- */
+let currentId = null;
+
+async function openDetail(id) {
+  const n = notes.find(x => x.id === id);
+  if (!n) return;
+  currentId = id;
+  $('detail-editor').innerHTML = editorHTML('d', n);
+  $('d-img').src = thumbs.get(id) || '';
+  figImage.d = thumbs.get(id) || '';
+  renderFigs('d', figImage.d);
+  show('detail');
+  if (!thumbs.has(id)) {
+    try {
+      const r = await api(`/api/notes/${id}/image`);
+      thumbs.set(id, r.image);
+      if (currentId === id) { $('d-img').src = r.image; renderFigs('d', r.image); }
+    } catch {}
+  }
+}
+
+$('back-btn').addEventListener('click', () => show('library'));
+
+$('d-save').addEventListener('click', async () => {
+  try {
+    const fields = readEditor('d');
+    await api(`/api/notes/${currentId}`, { method: 'PUT', body: JSON.stringify(fields) });
+    await refreshNotes();
+    toast('Changes saved ✓');
+  } catch (err) { toast(err.message); }
+});
+
+$('d-pdf').addEventListener('click', () => {
+  const n = notes.find(x => x.id === currentId);
+  if (n) pdfSafe(() => downloadOne({ ...n, ...readEditor('d') }));
+});
+
+$('d-del').addEventListener('click', async () => {
+  await deleteNote(currentId);
+  if (!notes.find(x => x.id === currentId)) show('library');
+});
+
+/* ---------- PDF ---------- */
+const PAGE_W = 210, M = 18, CW = PAGE_W - 2 * M, BOTTOM = 277;
+
+// the built-in PDF font only knows Latin characters, so swap common symbols for plain ones
+const pdfText = s => String(s ?? '')
+  .replace(/[→⇒⟶]/g, '->').replace(/[←⇐]/g, '<-').replace(/↔/g, '<->')
+  .replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-')
+  .replace(/≤/g, '<=').replace(/≥/g, '>=').replace(/≠/g, '!=').replace(/≈/g, '~')
+  .replace(/•/g, '-').replace(/…/g, '...');
+
+async function pdfSafe(fn) {
+  try { toast('Building PDF…'); await fn(); }
+  catch (err) { console.error(err); toast('PDF failed: ' + (err.message || err)); }
+}
+
+async function prepareNote(n) {
+  let image = n.image || thumbs.get(n.id);
+  if (!image && n.id) {
+    try { const r = await api(`/api/notes/${n.id}/image`); image = r.image; thumbs.set(n.id, image); } catch {}
+  }
+  const figs = [];
+  for (const f of (n.figures || [])) figs.push({ ...f, crop: await cropFigure(image, f.box) });
+  let photo = null;
+  if (image) { try { const i = await loadImg(image); photo = { url: image, w: i.width, h: i.height }; } catch {} }
+  return { ...n, figs, photo };
+}
+
+function renderNotePage(doc, n) {
+  const header = () => {
+    doc.setFillColor(20, 48, 42); doc.rect(0, 0, PAGE_W, 24, 'F'); doc.setFillColor(245, 213, 71); doc.rect(0, 24, PAGE_W, 1.5, 'F');
+    doc.setTextColor(255); doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
+    doc.text('BOARD TO NOTES', M, 15);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+    doc.text(pdfText(n.subject), PAGE_W - M, 15, { align: 'right' });
+  };
+  header();
+  const s = { y: 36 };
+  const need = h => { if (s.y + h > BOTTOM) { doc.addPage(); header(); s.y = 36; } };
+  const section = label => {
+    s.y += 4; need(14);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(20, 48, 42);
+    doc.text(label, M, s.y); s.y += 7;
+  };
+  const para = (text, size = 11, color = 30, indent = 0, style = 'normal') => {
+    doc.setFont('helvetica', style); doc.setFontSize(size); doc.setTextColor(color);
+    doc.splitTextToSize(pdfText(text), CW - indent).forEach(line => { need(6); doc.text(line, M + indent, s.y); s.y += size * 0.52; });
+  };
+  const bullet = text => {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setTextColor(30);
+    doc.splitTextToSize(pdfText(text), CW - 8).forEach((line, i) => {
+      need(6);
+      if (i === 0) doc.text('-', M + 2, s.y);
+      doc.text(line, M + 7, s.y); s.y += 5.6;
+    });
+    s.y += 1.5;
+  };
+  const picture = (pic, maxH) => {
+    if (!pic) return;
+    let w = Math.min(CW, pic.w * 0.264), h = w * pic.h / pic.w;   // 0.264 mm per px, never upscale much
+    if (h > maxH) { h = maxH; w = h * pic.w / pic.h; }
+    if (w < CW * 0.6 && pic.w * 0.264 > w) { /* tiny crops: keep natural size */ }
+    need(h + 4);
+    doc.setDrawColor(210); doc.rect(M, s.y - 1, w + 2, h + 2);
+    doc.addImage(pic.url, 'JPEG', M + 1, s.y, w, h);
+    s.y += h + 6;
+  };
+
+  doc.setTextColor(30); doc.setFont('helvetica', 'bold'); doc.setFontSize(20);
+  doc.splitTextToSize(pdfText(n.title), CW).forEach(line => { need(9); doc.text(line, M, s.y); s.y += 9; });
+  s.y += 2;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(100);
+  need(6); doc.text(pdfText(`Subject: ${n.subject}     Date: ${fmtDate(n.date)}`), M, s.y); s.y += 6;
+  doc.setDrawColor(200); doc.line(M, s.y, PAGE_W - M, s.y); s.y += 6;
+
+  if (n.summary) { section('OVERVIEW'); para(n.summary, 11, 50); s.y += 2; }
+
+  if (n.sections && n.sections.length) {
+    section('NOTES');
+    n.sections.forEach(sec => {
+      need(16);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(30);
+      doc.text(pdfText(sec.heading), M, s.y); s.y += 6.5;
+      sec.bullets.forEach(bullet);
+      s.y += 2;
+    });
+  }
+
+  if (n.figs && n.figs.length) {
+    section('DIAGRAMS, GRAPHS & TABLES');
+    n.figs.forEach((f, i) => {
+      need(20);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(30);
+      doc.text(pdfText(`Figure ${i + 1}: ${f.title}`), M, s.y); s.y += 5.5;
+      picture(f.crop, 120);
+      if (f.explanation) para(f.explanation, 10.5, 60, 2);
+      s.y += 5;
+    });
+  }
+
+  if (n.points && n.points.length) {
+    section('KEY TAKEAWAYS');
+    n.points.forEach(bullet);
+  }
+
+  if (n.definitions && n.definitions.length) {
+    section('KEY DEFINITIONS');
+    n.definitions.forEach(d => {
+      if (d.term) { need(7); para(d.term, 11, 30, 0, 'bold'); s.y += 0.6; }
+      para(d.def, 10.5, 60, 4); s.y += 3;
+    });
+  }
+
+  if (n.photo) {
+    doc.addPage(); header(); s.y = 36;
+    section('ORIGINAL BOARD PHOTO');
+    picture(n.photo, BOTTOM - s.y - 4);
+  }
+}
+
+async function buildPdf(list) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  for (let i = 0; i < list.length; i++) {
+    if (i > 0) doc.addPage();
+    renderNotePage(doc, await prepareNote(list[i]));
+  }
+  const total = doc.getNumberOfPages();
+  for (let p = 1; p <= total; p++) {
+    doc.setPage(p); doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(140);
+    doc.text(`Board to Notes · Page ${p} of ${total}`, PAGE_W / 2, 287, { align: 'center' });
+  }
+  return doc;
+}
+
+const fileName = (n, suffix = '') =>
+  (n.title.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_').slice(0, 50) || 'summary') + (suffix || `_${n.date}`) + '.pdf';
+
+async function downloadOne(n) { (await buildPdf([n])).save(fileName(n)); }
+
+async function downloadAll() {
+  if (!notes.length) return toast('Your library is empty.');
+  const q = $('search').value.trim();
+  const base = q ? notes.filter(n => currentLibList().some(x => x.id === n.id)) : currentLibList();
+  if (!base.length) return toast('Nothing to download.');
+  const sorted = [...base].sort((a, b) => (a.date + a.createdAt).localeCompare(b.date + b.createdAt));
+  const folder = !q && libFolder ? groupBySubject().find(g => g.key === libFolder) : null;
+  const label = folder ? folder.name.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_') : (q ? 'Results' : 'All');
+  (await buildPdf(sorted)).save(`Board_to_Notes_${label}_${todayISO()}.pdf`);
+}
+
+/* ---------- init ---------- */
+$('subjects').innerHTML = SUBJECTS.map(s => `<option value="${s}">`).join('');
+
+async function init() {
+  if (!token()) return showLogin();
+  try {
+    const me = await api('/api/me');
+    $('user-email').textContent = me.email;
+    showApp();
+    await refreshNotes();
+    show('create');
+  } catch {
+    showLogin();
+  }
+}
+init();
+</script>
+<script>
+(function(){
+  const els = document.querySelectorAll('.reveal');
+  if (!('IntersectionObserver' in window)) { els.forEach(e => e.classList.add('in')); return; }
+  const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { threshold: .2 });
+  els.forEach(e => io.observe(e));
+})();
+</script>
+</body>
+</html>
